@@ -20,6 +20,13 @@ package com.example.daobadat.androidmap;
  *  limitations under the License.
  */
 
+import android.content.Context;
+import android.util.Log;
+import android.widget.ArrayAdapter;
+import android.widget.Filter;
+import android.widget.Filterable;
+import android.widget.Toast;
+
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.Status;
@@ -28,13 +35,6 @@ import com.google.android.gms.location.places.AutocompletePrediction;
 import com.google.android.gms.location.places.AutocompletePredictionBuffer;
 import com.google.android.gms.location.places.Places;
 import com.google.android.gms.maps.model.LatLngBounds;
-
-import android.content.Context;
-import android.util.Log;
-import android.widget.ArrayAdapter;
-import android.widget.Filter;
-import android.widget.Filterable;
-import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -166,33 +166,34 @@ public class PlaceAutoCompleteAdapter
 
             // Submit the query to the autocomplete API and retrieve a PendingResult that will
             // contain the results when the query completes.
-            PendingResult<AutocompletePredictionBuffer> results =
-                    Places.GeoDataApi
-                            .getAutocompletePredictions(mGoogleApiClient, constraint.toString(),
-                                    mBounds, mPlaceFilter);
+            PendingResult<AutocompletePredictionBuffer> results = Places.GeoDataApi
+                    .getAutocompletePredictions(mGoogleApiClient, constraint.toString(), mBounds, mPlaceFilter);
 
             // This method should have been called off the main UI thread. Block and wait for at most 60s
             // for a result from the API.
-            AutocompletePredictionBuffer autocompletePredictions = results
-                    .await(60, TimeUnit.SECONDS);
+            AutocompletePredictionBuffer autocompletePredictions = results.await(60, TimeUnit.SECONDS);
 
             // Confirm that the query completed successfully, otherwise return null
             final Status status = autocompletePredictions.getStatus();
             if (!status.isSuccess()) {
                 Toast.makeText(getContext(), "Error contacting API: " + status.toString(),
                         Toast.LENGTH_SHORT).show();
-                Log.e(TAG, "Error getting autocomplete prediction API call: " + status.getStatusMessage()+status.getStatus().getStatusMessage());
+
+                Log.e(TAG, "Error getting autocomplete prediction API call: "
+                        + status.getStatusMessage() + status.getStatus().getStatusMessage());
+
                 autocompletePredictions.release();
+
                 return null;
             }
 
-            Log.i(TAG, "Query completed. Received " + autocompletePredictions.getCount()
-                    + " predictions.");
+            Log.i(TAG, "Query completed. Received " + autocompletePredictions.getCount() + " predictions.");
 
             // Copy the results into our own data structure, because we can't hold onto the buffer.
             // AutocompletePrediction objects encapsulate the API response (place ID and description).
 
             Iterator<AutocompletePrediction> iterator = autocompletePredictions.iterator();
+
             ArrayList resultList = new ArrayList<>(autocompletePredictions.getCount());
             while (iterator.hasNext()) {
                 AutocompletePrediction prediction = iterator.next();
@@ -214,7 +215,6 @@ public class PlaceAutoCompleteAdapter
      * Holder for Places Geo Data Autocomplete API results.
      */
     class PlaceAutocomplete {
-
         public CharSequence placeId;
         public CharSequence description;
 
@@ -227,8 +227,5 @@ public class PlaceAutoCompleteAdapter
         public String toString() {
             return description.toString();
         }
-
-
     }
-
 }
