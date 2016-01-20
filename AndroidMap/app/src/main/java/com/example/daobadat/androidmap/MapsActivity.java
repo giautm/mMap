@@ -464,10 +464,15 @@ public class MapsActivity extends AppCompatActivity
     }
 
     private void location(LatLng start) {
+
+        //xóa cái marker và poliline
+        mMap.clear();
+
         moveView(start);
 
         MarkerOptions options = new MarkerOptions();
         options.position(start);
+        options.title(mEditTextStarting.getText().toString());
         options.icon(BitmapDescriptorFactory.fromResource(R.drawable.start_blue));
 
         mMarkers.add(mMap.addMarker(options));
