@@ -12,6 +12,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
+import android.view.ContextMenu;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -19,6 +20,7 @@ import android.widget.AdapterView;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.directions.route.AbstractRouting;
@@ -112,28 +114,8 @@ public class MapsActivity extends AppCompatActivity
     private GoogleMap.OnMarkerClickListener mMarkerClickListener = new GoogleMap.OnMarkerClickListener() {
         @Override
         public boolean onMarkerClick(Marker marker) {
-            String name = marker.getTitle();
-            LatLng latLng = marker.getPosition();
-
-            if (name == null) {
-                name = "?Không biết?";
-            }
-
-            Log.d(LOG_TAG, "Clicked Marker: " + name + ", [" + latLng.latitude + ", " + latLng.longitude + ']');
-
-
-            mRealm.beginTransaction();
-
-            MyLocation location = mRealm.createObject(MyLocation.class);
-            location.setLocationId(generateMyLocationId());
-            location.setName(name);
-            location.setLat(latLng.latitude);
-            location.setLng(latLng.longitude);
-
-            mRealm.commitTransaction();
-
-            Toast.makeText(MapsActivity.this, "Đã thêm địa điểm: " + name, Toast.LENGTH_SHORT).show();
-
+                //Show InfoWindow
+            marker.showInfoWindow();
             return false;
         }
     };
@@ -154,6 +136,9 @@ public class MapsActivity extends AppCompatActivity
 
         // ATTENTION: This "addApi(AppIndex.API)"was auto-generated to implement the App Indexing API.
         // See https://g.co/AppIndexing/AndroidStudio for more information.
+
+
+
         mGoogleApiClient = new GoogleApiClient.Builder(this)
                 .addApi(LocationServices.API)
                 .addApi(Places.GEO_DATA_API)
@@ -189,6 +174,81 @@ public class MapsActivity extends AppCompatActivity
             getSupportFragmentManager().beginTransaction().replace(R.id.map, mapFragment).commit();
         }
         mapFragment.getMapAsync(this);
+        mMap= mapFragment.getMap();
+
+        //set adapter for infowindow
+        mMap.setInfoWindowAdapter(new GoogleMap.InfoWindowAdapter() {
+
+            // Use default InfoWindow frame
+            @Override
+            public View getInfoWindow(Marker arg0) {
+                return null;
+            }
+
+            // Defines the contents of the InfoWindow
+            @Override
+            public View getInfoContents(Marker arg0) {
+
+                // Getting view from the layout file info_window_layout
+                View v = getLayoutInflater().inflate(R.layout.info_window_layout, null);
+
+                // Getting the position from the marker
+                LatLng latLng = arg0.getPosition();
+
+                // Getting reference to the TextView to set title
+                TextView title = (TextView) v.findViewById(R.id.title);
+
+                // Getting reference to the TextView to set latitude
+                TextView tvLat = (TextView) v.findViewById(R.id.tv_lat);
+
+                // Getting reference to the TextView to set longitude
+                TextView tvLng = (TextView) v.findViewById(R.id.tv_lng);
+
+                // Getting reference to the TextView to set longitude
+                TextView addLocation = (TextView) v.findViewById(R.id.add_location);
+
+                // Setting title
+                title.setText(arg0.getTitle());
+
+                // Setting the latitude
+                tvLat.setText("Latitude:" + latLng.latitude);
+
+                // Setting the longitude
+                tvLng.setText("Longitude:" + latLng.longitude);
+
+                // Returning the view containing InfoWindow contents
+
+                return v;
+
+            }
+        });
+
+        mMap.setOnInfoWindowClickListener(new GoogleMap.OnInfoWindowClickListener() {
+            @Override
+            public void onInfoWindowClick(Marker marker) {
+                String name = marker.getTitle();
+                LatLng latLng = marker.getPosition();
+
+                if (name == null) {
+                    name = "?Không biết?";
+                }
+
+                Log.d(LOG_TAG, "Clicked Marker: " + name + ", [" + latLng.latitude + ", " + latLng.longitude + ']');
+
+
+                mRealm.beginTransaction();
+
+                MyLocation location = mRealm.createObject(MyLocation.class);
+                location.setLocationId(generateMyLocationId());
+                location.setName(name);
+                location.setLat(latLng.latitude);
+                location.setLng(latLng.longitude);
+
+                mRealm.commitTransaction();
+
+                Toast.makeText(MapsActivity.this, "Đã thêm địa điểm: " + name, Toast.LENGTH_SHORT).show();
+            }
+        });
 
         mRealm = Realm.getInstance(this);
 
@@ -475,7 +535,7 @@ public class MapsActivity extends AppCompatActivity
         options.title(mEditTextStarting.getText().toString());
         options.icon(BitmapDescriptorFactory.fromResource(R.drawable.start_blue));
 
-        mMarkers.add(mMap.addMarker(options));
+        mMap.addMarker(options);
     }
 
     @Override
@@ -493,6 +553,8 @@ public class MapsActivity extends AppCompatActivity
     @Override
     public void onRoutingSuccess(ArrayList<Route> route, int shortestRouteIndex) {
         progressDialog.dismiss();
+
+        mMap.clear();
 
         moveView(mStartLatLng);
         if (mPolylines != null && mPolylines.size() > 0) {
@@ -529,6 +591,7 @@ public class MapsActivity extends AppCompatActivity
         options.position(mStartLatLng);
         options.title(startName);
         options.icon(BitmapDescriptorFactory.fromResource(R.drawable.start_blue));
+
         mMap.addMarker(options);
 
         // End marker
