@@ -4,8 +4,11 @@ import android.Manifest;
 import android.app.ProgressDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Criteria;
 import android.location.Location;
+import android.location.LocationManager;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -17,9 +20,11 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -28,6 +33,7 @@ import com.directions.route.Route;
 import com.directions.route.Routing;
 import com.directions.route.RoutingListener;
 import com.example.daobadat.androidmap.models.MyLocation;
+import com.example.daobadat.androidmap.models.PlaceJSONParser;
 import com.google.android.gms.appindexing.Action;
 import com.google.android.gms.appindexing.AppIndex;
 import com.google.android.gms.common.ConnectionResult;
@@ -55,23 +61,44 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
 import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 import io.realm.Realm;
 
-public class MapsActivity extends AppCompatActivity
-        implements OnMapReadyCallback, RoutingListener,
-        GoogleApiClient.OnConnectionFailedListener,
-        GoogleApiClient.ConnectionCallbacks {
+public class MapsActivity extends AppCompatActivity implements OnMapReadyCallback, RoutingListener,
+                                                                GoogleApiClient.OnConnectionFailedListener,
+                                                                    GoogleApiClient.ConnectionCallbacks {
+    //Tiêu đề của log (không quan trọng)
     private final String LOG_TAG = "MapsActivity";
 
+    // Khởi tạo map
     protected GoogleMap mMap;
+
+    //Khởi tạo các biến liên quan tới tìm đường (route)
     protected LatLng mStartLatLng;
     protected LatLng mEndLatLng;
 
+    //Khởi tạo các biến liên quan tìm địa điểm gần nhất
+    Spinner mSprPlaceType;
+    String[] mPlaceType=null;
+    String[] mPlaceTypeName=null;
+    double mLatitude=0;
+    double mLongitude=0;
+
+    //Khởi tạo các biến kết nối tới view
     @Bind(R.id.start)
     AutoCompleteTextView mEditTextStarting;
 
@@ -84,11 +111,19 @@ public class MapsActivity extends AppCompatActivity
     @Bind(R.id.btn_show_locations)
     Button mButtonShowLocations;
 
+    //Không biết giải thích
     protected GoogleApiClient mGoogleApiClient;
+
+    //Khởi tạo biến liên quan tới việc tự động đưa ra các gợi ý về địa điễm mỗi khi nhập chữ vào
     private PlaceAutoCompleteAdapter mAdapter;
+
+    //Khởi tạo biến show progressDialog (dùng khi nhấn tìm kiếm đường giữa 2 điểm)
     private ProgressDialog progressDialog;
+
+    //Các đường vẽ (dùng để tô màu đường đi khi tìm đường giữa 2 điểm)
     private ArrayList<Polyline> mPolylines;
 
+    //Màu sắc
     private int[] colors = new int[]{
             R.color.primary_dark,
             R.color.primary,
@@ -97,32 +132,31 @@ public class MapsActivity extends AppCompatActivity
             R.color.primary_dark_material_light
     };
 
+    //Phần bên lưu địa điểm
     private static final LatLngBounds BOUNDS_HO_CHI_MINH = new LatLngBounds(
             new LatLng(-57.965341647205726, 144.9987719580531),
             new LatLng(72.77492067739843, -9.998857788741589));
-
     private Marker mCurrentLocationMarker = null;
     private LatLng mCurrentLatLng = null;
     private LocationRequest mLocationRequest;
     private LocationListener mCurrentLocationListener;
     private boolean mRequestingLocationUpdate = false;
-
     private ArrayList<Marker> mMarkers = new ArrayList<>();
-
     private Realm mRealm;
 
+    //Khi click vào marker sẽ show ra InfoWindow và gán vị trí vào 2 biến mLatitude,mLongitude để có thể sử dụng tìm các ... gần nhất
     private GoogleMap.OnMarkerClickListener mMarkerClickListener = new GoogleMap.OnMarkerClickListener() {
         @Override
         public boolean onMarkerClick(Marker marker) {
                 //Show InfoWindow
             marker.showInfoWindow();
+            mLatitude = marker.getPosition().latitude;
+            mLongitude = marker.getPosition().longitude;
             return false;
         }
     };
 
-    /**
-     * This activity loads a mMap and then displays the findRoute and pushpins on it.
-     */
+    //Hàm bắt đầu
     @Override
     public void onCreate(Bundle savedInstanceState) {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -134,11 +168,9 @@ public class MapsActivity extends AppCompatActivity
         setContentView(R.layout.activity_maps);
         ButterKnife.bind(this);
 
-        // ATTENTION: This "addApi(AppIndex.API)"was auto-generated to implement the App Indexing API.
-        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        //****************** HIỆN MAP ******************
 
-
-
+        //không biết
         mGoogleApiClient = new GoogleApiClient.Builder(this)
                 .addApi(LocationServices.API)
                 .addApi(Places.GEO_DATA_API)
@@ -146,10 +178,12 @@ public class MapsActivity extends AppCompatActivity
                 .addOnConnectionFailedListener(this)
                 .addApi(AppIndex.API).build();
 
+        //KHông biết
         mCurrentLocationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
                 mCurrentLatLng = new LatLng(location.getLatitude(), location.getLongitude());
+
 
                 if (mCurrentLocationMarker == null) {
                     if (mMap != null) {
@@ -167,6 +201,7 @@ public class MapsActivity extends AppCompatActivity
 
         MapsInitializer.initialize(this);
 
+        //Liên kết map với map để show lên
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         if (mapFragment == null) {
@@ -175,6 +210,60 @@ public class MapsActivity extends AppCompatActivity
         }
         mapFragment.getMapAsync(this);
         mMap= mapFragment.getMap();
+
+        //****************** HIỆN MAP ******************
+
+        //****************** TÌM KIẾM CÁC NƠI GẦN NHẤT ******************
+
+        mPlaceType = getResources().getStringArray(R.array.place_type);
+        mPlaceTypeName = getResources().getStringArray(R.array.place_type_name);
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, mPlaceTypeName);
+
+        // Getting reference to the Spinner
+        mSprPlaceType = (Spinner) findViewById(R.id.spr_place_type);
+
+        // Setting adapter on Spinner to set place types
+        mSprPlaceType.setAdapter(adapter);
+
+        Button btnFind;
+
+        // Getting reference to Find Button
+        btnFind = ( Button ) findViewById(R.id.btn_find);
+
+
+        btnFind.setOnClickListener(new View.OnClickListener() {
+
+            @Override
+            public void onClick(View v) {
+
+                int selectedPosition = mSprPlaceType.getSelectedItemPosition();
+                String type = mPlaceType[selectedPosition];
+
+                if(mLatitude == 0 && mLongitude == 0)
+                {
+                    Toast.makeText(MapsActivity.this, "Bạn hãy chọn địa điểm cố định", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                StringBuilder sb = new StringBuilder("https://maps.googleapis.com/maps/api/place/nearbysearch/json?");
+                sb.append("location="+mLatitude+","+mLongitude);
+                sb.append("&radius=5000");
+                sb.append("&types="+type);
+                sb.append("&sensor=true");
+                sb.append("&key=AIzaSyBGwoqztspvIVmCNmXwv2eP2wFlwNUpupQ");
+
+                // Creating a new non-ui thread task to download json data
+                PlacesTask placesTask = new PlacesTask();
+
+                // Invokes the "doInBackground()" method of the class PlaceTask
+                placesTask.execute(sb.toString());
+
+            }
+        });
+
+        //****************** TÌM KIẾM CÁC NƠI GẦN NHẤT ******************
+
+        //****************** CLICK MARKER HIỆN INFOWINDOW AND LƯU ĐỊA ĐIỂM ******************
 
         //set adapter for infowindow
         mMap.setInfoWindowAdapter(new GoogleMap.InfoWindowAdapter() {
@@ -251,6 +340,10 @@ public class MapsActivity extends AppCompatActivity
         });
 
         mRealm = Realm.getInstance(this);
+
+        //****************** CLICK MARKER HIỆN INFOWINDOW AND LƯU ĐỊA ĐIỂM ******************
+
+        //****************** TÌM ĐƯỜNG ******************
 
         mAdapter = new PlaceAutoCompleteAdapter(this, android.R.layout.simple_list_item_1,
                 mGoogleApiClient, BOUNDS_HO_CHI_MINH, null);
@@ -375,7 +468,149 @@ public class MapsActivity extends AppCompatActivity
             public void afterTextChanged(Editable s) {
             }
         });
+
+        //****************** TÌM ĐƯỜNG ******************
     }
+
+    //****************** HÀM LIÊN QUAN TỚI TÌM CÁC NƠI... GẦN NHẤT ******************
+
+
+    private String downloadUrl(String strUrl) throws IOException {
+        String data = "";
+        InputStream iStream = null;
+        HttpURLConnection urlConnection = null;
+        try{
+            URL url = new URL(strUrl);
+
+            // Creating an http connection to communicate with url
+            urlConnection = (HttpURLConnection) url.openConnection();
+
+            // Connecting to url
+            urlConnection.connect();
+
+            // Reading data from url
+            iStream = urlConnection.getInputStream();
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(iStream));
+
+            StringBuffer sb  = new StringBuffer();
+
+            String line = "";
+            while( ( line = br.readLine())  != null){
+                sb.append(line);
+            }
+
+            data = sb.toString();
+
+            br.close();
+
+        }catch(Exception e){
+            Log.d("Exception while downloading url", e.toString());
+        }finally{
+            iStream.close();
+            urlConnection.disconnect();
+        }
+
+        return data;
+    }
+
+    private class PlacesTask extends AsyncTask<String, Integer, String> {
+
+        String data = null;
+
+        // Invoked by execute() method of this object
+        @Override
+        protected String doInBackground(String... url) {
+            try{
+                data = downloadUrl(url[0]);
+            }catch(Exception e){
+                Log.d("Background Task",e.toString());
+            }
+            return data;
+        }
+
+        // Executed after the complete execution of doInBackground() method
+        @Override
+        protected void onPostExecute(String result){
+            ParserTask parserTask = new ParserTask();
+
+            // Start parsing the Google places in JSON format
+            // Invokes the "doInBackground()" method of the class ParseTask
+            parserTask.execute(result);
+        }
+
+    }
+
+    /** A class to parse the Google Places in JSON format */
+    private class ParserTask extends AsyncTask<String, Integer, List<HashMap<String,String>>>{
+
+        JSONObject jObject;
+
+        // Invoked by execute() method of this object
+        @Override
+        protected List<HashMap<String,String>> doInBackground(String... jsonData) {
+
+            List<HashMap<String, String>> places = null;
+            PlaceJSONParser placeJsonParser = new PlaceJSONParser();
+
+            try{
+                jObject = new JSONObject(jsonData[0]);
+
+                /** Getting the parsed data as a List construct */
+                places = placeJsonParser.parse(jObject);
+
+            }catch(Exception e){
+                Log.d("Exception",e.toString());
+            }
+            return places;
+        }
+
+        // Executed after the complete execution of doInBackground() method
+        @Override
+        protected void onPostExecute(List<HashMap<String,String>> list){
+
+            // Clears all the existing markers
+            mMap.clear();
+            onConnected(Bundle.EMPTY);
+            mLatitude  = 0;
+            mLongitude = 0;
+
+            for(int i=0;i<list.size();i++){
+
+                // Creating a marker
+                MarkerOptions markerOptions = new MarkerOptions();
+
+                // Getting a place from the places list
+                HashMap<String, String> hmPlace = list.get(i);
+
+                // Getting latitude of the place
+                double lat = Double.parseDouble(hmPlace.get("lat"));
+
+                // Getting longitude of the place
+                double lng = Double.parseDouble(hmPlace.get("lng"));
+
+                // Getting name
+                String name = hmPlace.get("place_name");
+
+                // Getting vicinity
+                String vicinity = hmPlace.get("vicinity");
+
+                LatLng latLng = new LatLng(lat, lng);
+
+                // Setting the position for the marker
+                markerOptions.position(latLng);
+                markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW));
+                // Setting the title for the marker.
+                //This will be displayed on taping the marker
+                markerOptions.title(name + " : " + vicinity);
+
+                // Placing a marker on the touched position
+                mMap.addMarker(markerOptions);
+            }
+        }
+    }
+
+    //****************** HÀM LIÊN QUAN TỚI TÌM CÁC NƠI... GẦN NHẤT ******************
 
     @Override
     protected void onStart() {
@@ -478,6 +713,8 @@ public class MapsActivity extends AppCompatActivity
         mMap.setOnMarkerClickListener(mMarkerClickListener);
     }
 
+    //****************** HÀM LIÊN QUAN TỚI TÌM ĐƯỜNG ******************
+
     public void findRoutes() {
         if (mStartLatLng == null) {
             mStartLatLng = mCurrentLatLng;
@@ -486,9 +723,10 @@ public class MapsActivity extends AppCompatActivity
         if (mStartLatLng == null || mEndLatLng == null) {
             if (mStartLatLng == null) {
                 if (mEditTextStarting.getText().length() > 0) {
-                    mEditTextStarting.setError("Chọn vị trí từ danh sách sổ.");
+                    Toast.makeText(this, "Chọn 1 trong những gợi ý được đưa ra", Toast.LENGTH_SHORT)
+                            .show();
                 } else {
-                    Toast.makeText(this, "Please choose a starting point.", Toast.LENGTH_SHORT)
+                    Toast.makeText(this, "Nhập địa điểm cần tìm", Toast.LENGTH_SHORT)
                             .show();
                 }
             }
@@ -497,8 +735,8 @@ public class MapsActivity extends AppCompatActivity
                 location(mStartLatLng);
             }
         } else {
-            progressDialog = ProgressDialog.show(this, "Please wait.",
-                    "Fetching route information.", true);
+            progressDialog = ProgressDialog.show(this, "Đang tìm đường",
+                    "Xin vui lòng đợi", true);
 
             Routing routing = new Routing.Builder()
                     .travelMode(AbstractRouting.TravelMode.DRIVING)
@@ -523,17 +761,19 @@ public class MapsActivity extends AppCompatActivity
         }
     }
 
+
     private void location(LatLng start) {
 
         //xóa cái marker và poliline
         mMap.clear();
+        mLatitude  = 0;
+        mLongitude = 0;
 
         moveView(start);
 
         MarkerOptions options = new MarkerOptions();
         options.position(start);
         options.title(mEditTextStarting.getText().toString());
-        options.icon(BitmapDescriptorFactory.fromResource(R.drawable.start_blue));
 
         mMap.addMarker(options);
     }
@@ -542,7 +782,7 @@ public class MapsActivity extends AppCompatActivity
     public void onRoutingFailure() {
         // The Routing request failed
         progressDialog.dismiss();
-        Toast.makeText(this, "Something went wrong, Try again", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Không tìm thấy đường", Toast.LENGTH_SHORT).show();
     }
 
     @Override
@@ -555,6 +795,9 @@ public class MapsActivity extends AppCompatActivity
         progressDialog.dismiss();
 
         mMap.clear();
+        mLatitude  = 0;
+        mLongitude = 0;
+
 
         moveView(mStartLatLng);
         if (mPolylines != null && mPolylines.size() > 0) {
@@ -608,6 +851,8 @@ public class MapsActivity extends AppCompatActivity
     public void onRoutingCancelled() {
         Log.i(LOG_TAG, "Routing was cancelled.");
     }
+
+    //****************** HÀM LIÊN QUAN TỚI TÌM ĐƯỜNG ******************
 
     @Override
     public void onConnectionFailed(ConnectionResult connectionResult) {
