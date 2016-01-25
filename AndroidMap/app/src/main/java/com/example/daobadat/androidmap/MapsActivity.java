@@ -152,6 +152,8 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
             marker.showInfoWindow();
             mLatitude = marker.getPosition().latitude;
             mLongitude = marker.getPosition().longitude;
+            mEditTextStarting.setText(marker.getTitle());
+            mStartLatLng = new LatLng(marker.getPosition().latitude,marker.getPosition().longitude);
             return false;
         }
     };
@@ -245,6 +247,7 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
                     Toast.makeText(MapsActivity.this, "Bạn hãy chọn địa điểm cố định", Toast.LENGTH_SHORT).show();
                     return;
                 }
+
                 StringBuilder sb = new StringBuilder("https://maps.googleapis.com/maps/api/place/nearbysearch/json?");
                 sb.append("location="+mLatitude+","+mLongitude);
                 sb.append("&radius=5000");
@@ -571,11 +574,21 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
 
             // Clears all the existing markers
             mMap.clear();
+            //Add Marker location
             onConnected(Bundle.EMPTY);
-            mLatitude  = 0;
-            mLongitude = 0;
+
+            //Add Marker place location
+            LatLng latLng = new LatLng(mLatitude, mLongitude);
+            MarkerOptions options = new MarkerOptions();
+            options.position(latLng);
+            options.title(mEditTextStarting.getText().toString());
+            options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ROSE));
+            moveView(latLng);
+
+            mMap.addMarker(options);
 
             for(int i=0;i<list.size();i++){
+
 
                 // Creating a marker
                 MarkerOptions markerOptions = new MarkerOptions();
@@ -589,13 +602,18 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
                 // Getting longitude of the place
                 double lng = Double.parseDouble(hmPlace.get("lng"));
 
+                if(lat == mLatitude && lng == mLongitude)
+                {
+                    continue;
+                }
+
                 // Getting name
                 String name = hmPlace.get("place_name");
 
                 // Getting vicinity
                 String vicinity = hmPlace.get("vicinity");
 
-                LatLng latLng = new LatLng(lat, lng);
+                latLng = new LatLng(lat, lng);
 
                 // Setting the position for the marker
                 markerOptions.position(latLng);
@@ -607,6 +625,9 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
                 // Placing a marker on the touched position
                 mMap.addMarker(markerOptions);
             }
+
+            mLatitude  = 0;
+            mLongitude = 0;
         }
     }
 
