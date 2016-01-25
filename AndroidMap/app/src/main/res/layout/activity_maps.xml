@@ -12,13 +12,37 @@
         android:layout_height="match_parent"
         tools:context=".MapsActivity" />
 
-    <Button
-        android:id="@+id/btn_show_locations"
-        android:layout_width="60dp"
-        android:layout_height="40dp"
-        android:alpha="0.5"
-        android:color="#66FF0000"
-        android:text="Locations" />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:context=".MainActivity" >
+
+        <Spinner
+            android:id="@+id/spr_place_type"
+            android:layout_width="wrap_content"
+            android:layout_height="60dp"
+            android:layout_alignParentTop="true" />
+
+        <Button
+            android:id="@+id/btn_find"
+            android:layout_width="wrap_content"
+            android:layout_height="60dp"
+            android:layout_alignParentTop="true"
+            android:layout_toRightOf="@id/spr_place_type"
+            android:text="@string/str_btn_find" />
+
+        <Button
+            android:id="@+id/btn_show_locations"
+            android:layout_width="wrap_content"
+            android:layout_height="60dp"
+            android:alpha="0.5"
+            android:color="#66FF0000"
+            android:text="Locations"
+            android:layout_toRightOf="@+id/btn_find"
+            android:layout_gravity="right|top" />
+
+    </RelativeLayout>
 
     <android.support.v7.widget.CardView
         android:id="@+id/cardview"
@@ -77,4 +101,6 @@
 
         </RelativeLayout>
     </android.support.v7.widget.CardView>
+
+
 </FrameLayout>
